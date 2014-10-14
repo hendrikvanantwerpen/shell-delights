@@ -79,7 +79,10 @@ case "$CMD" in
         check_running "$NAME" $1 && {
             echo "*** Showing process output, close with Ctrl-C ***"
             tail -f "$LOGFILE"
-        }
+        } || { [ -e "$PIDFILE" ] && {
+            tail "$LOGFILE"
+            echo "*** Process terminated ***"
+        } }
         ;;
     stop)
         if check_running "$NAME" clean; then
