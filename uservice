@@ -7,7 +7,6 @@ mkdir -p $RUNDIR $LOGDIR
 usage() {
     echo "Usage:"
     echo -e "\t$0 list <clean>"
-    echo -e "\t$0 logs <clean>"
     echo -e "\t$0 NAME start PROGRAM <ARGS>"
     echo -e "\t$0 NAME status"
     echo -e "\t$0 NAME log"
@@ -17,6 +16,7 @@ usage() {
 check_running() {
     NAME=$1
     PIDFILE=$RUNDIR/$NAME.pid
+    LOGFILE=$LOGDIR/$NAME.log
     CLEANUP=$2
     if [ -f "$PIDFILE" ]; then
         THEPID=`cat "$PIDFILE"`
@@ -26,7 +26,7 @@ check_running() {
             echo "$NAME ($THEPID) not running (crashed?)."
             if [ "x$CLEANUP" = "xclean" ]; then
                 echo "Cleaning up stale process $NAME."
-                /bin/rm -f "$PIDFILE"
+                /bin/rm -f "$PIDFILE" "$LOGFILE"
             fi
             false
         }
@@ -54,22 +54,6 @@ if [ "x$NAME" = "xlist" ]; then
     exit 0
 fi
 
-if [ "x$NAME" = "xlogs" ]; then
-    for LNAME in `ls $LOGDIR/*.log 2>/dev/null | xargs -I{} basename {} .log`; do
-        if check_running "$LNAME" $1 >&/dev/null; then
-            echo "$LNAME active log found"
-        else
-            if [ "x$1" = "xclean" ]; then
-                echo "Cleaning up stale log $NAME"
-                /bin/rm -f "$LOGDIR/${LNAME}.log"
-            else
-                echo "$LNAME finished log found"
-            fi
-        fi
-    done
-    exit 0
-fi
-
 CMD=$1
 if [ -z "$CMD" ]; then
     echo "Error: No command specified."
@@ -91,11 +75,15 @@ case "$CMD" in
         check_running "$NAME" $1
         ;;
     log)
-        check_running "$NAME" $1 && {
+        LINES="-10"
+        if [ ! -z "$1" ]; then
+            LINES="$1"
+        fi
+        check_running "$NAME" && {
             echo "*** Showing process output, close with Ctrl-C ***"
-            tail -f "$LOGFILE"
+            tail ${LINES}f "$LOGFILE"
         } || { [ -e "$PIDFILE" ] && {
-            tail "$LOGFILE"
+            tail ${LINES} "$LOGFILE"
             echo "*** Process terminated ***"
         } }
         ;;
