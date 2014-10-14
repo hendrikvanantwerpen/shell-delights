@@ -69,15 +69,10 @@ case "$CMD" in
             echo "Cannot start second instance."
             exit 1
         fi
-        (nohup $* >&"$LOGFILE" &) && {
-            echo $! >&"$PIDFILE"
-            true
-        } || {
-            echo "Failed to start $NAME."
-            false
-        }
+        nohup $* >&"$LOGFILE" &
+        echo $! >"$PIDFILE"
         ;;
-    status)
+    stat*)
         check_running "$NAME" $1
         ;;
     log)
