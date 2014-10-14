@@ -1,0 +1,31 @@
+#!/bin/bash
+
+SCRIPTNAME="`basename $0`"
+
+if echo "$SCRIPTNAME" | grep -E '^dropbox-\w*$' >&/dev/null; then
+  true
+else
+  echo "Link this script in the form dropbox-DROPBOXNAME to use it."
+  exit 1
+fi
+
+DROPBOXNAME="`echo $SCRIPTNAME | sed -e 's/^dropbox-\(\w*\)$/\1/'`"
+if [ -z "$DROPBOXNAME" ]; then
+  echo "Link this script in the form dropbox-DROPBOXNAME to use it."
+  exit 1
+fi
+
+export HOME=$HOME/.dropbox-homes/$DROPBOXNAME
+if [ ! -d "$HOME" ]; then
+  mkdir -p "$HOME"
+  echo "Dropbox not setup. Run 'HOME=$HOME dropbox start -i' to setup this dropbox."
+  exit 1
+fi
+
+DROPBOXD=$HOME/.dropbox-dist/dropboxd
+if [ ! -x "$DROPBOXD" ]; then
+  echo "Dropbox deamon not found, forgot setup?. Run 'HOME=$HOME dropbox start -i' to setup this dropbox."
+  exit 1
+fi
+
+"$DROPBOXD" &
