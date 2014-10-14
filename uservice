@@ -7,6 +7,7 @@ mkdir -p $RUNDIR $LOGDIR
 usage() {
     echo "Usage:"
     echo -e "\t$0 list <clean>"
+    echo -e "\t$0 logs <clean>"
     echo -e "\t$0 NAME start PROGRAM <ARGS>"
     echo -e "\t$0 NAME status"
     echo -e "\t$0 NAME log"
@@ -47,11 +48,25 @@ LOGFILE=$LOGDIR/${NAME}.log
 PIDFILE=$RUNDIR/${NAME}.pid
 
 if [ "x$NAME" = "xlist" ]; then
-    if ls $RUNDIR/*.pid >&/dev/null; then
-        for PNAME in `ls $RUNDIR/*.pid 2>/dev/null | xargs -I{} basename {} .pid`; do
-            check_running "$PNAME" $1
-        done
-    fi
+    for PNAME in `ls $RUNDIR/*.pid 2>/dev/null | xargs -I{} basename {} .pid`; do
+        check_running "$PNAME" $1
+    done
+    exit 0
+fi
+
+if [ "x$NAME" = "xlogs" ]; then
+    for LNAME in `ls $LOGDIR/*.log 2>/dev/null | xargs -I{} basename {} .log`; do
+        if check_running "$LNAME" $1 >&/dev/null; then
+            echo "$LNAME active log found"
+        else
+            if [ "x$1" = "xclean" ]; then
+                echo "Cleaning up stale log $NAME"
+                /bin/rm -f "$LOGDIR/${LNAME}.log"
+            else
+                echo "$LNAME finished log found"
+            fi
+        fi
+    done
     exit 0
 fi
 
