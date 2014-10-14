@@ -1,0 +1,6 @@
+#!/bin/sh
+FORUSER=$USER
+if [ ! -z "$1" ]; then
+    FORUSER="$1"
+fi
+w -h | sed -ne "s/$FORUSER[^:]*\(:[\.0-9]\+\).*/\1/p" | uniq

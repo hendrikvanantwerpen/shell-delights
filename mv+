@@ -1,0 +1,21 @@
+#!/bin/bash
+
+function error {
+    echo "Error: $1"
+    echo "Usage: $0 <min-size> <to-dir> [from-dir-or-file]*"
+    exit 1
+}
+
+SIZE=$1
+if [ -z "$SIZE" ] || `(echo $SIZE | grep -xvE '[0-9]+[kKmMgG]' >&/dev/null)`; then
+    error "min-size '$SIZE' empty, not an integer or has wrong unit"
+fi
+shift
+
+TODIR=$1
+if [ -z "$TODIR" -o ! -d "$TODIR" ]; then
+    error "to-dir '$TODIR' empty or not a directory"
+fi
+shift
+
+find "$@" -type f -size +${SIZE} -print0 | xargs -0 -I{} mv '{}' "$TODIR"

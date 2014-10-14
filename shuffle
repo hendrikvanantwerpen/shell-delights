@@ -1,0 +1,8 @@
+#!/usr/bin/perl
+
+use List::Util 'shuffle';
+
+my @shuffled = shuffle( <STDIN> );
+print @shuffled;
+
+exit 0;
