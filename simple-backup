@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 
 SB_CONFIG="$HOME/.simple-backup.conf"
 if [ ! -f "$SB_CONFIG" ]; then
@@ -21,11 +21,11 @@ if [ -z "$SB_DST" ]; then
     exit 1
 fi
 if [ ! -e "$SB_DST" ]; then
-    echo "Error: Destination $SB_DST doesn't exist. Run '$0 init' to create it."
+    [ "x$1" != "xtrigger" ] && echo "Error: Destination $SB_DST doesn't exist. Run '$0 init' to create it."
     exit 1
 fi
 if [ ! -d "$SB_DST" ]; then
-    echo "Error: Destination $SB_DST is not a directory."
+    [ "x$1" != "xtrigger" ] && echo "Error: Destination $SB_DST is not a directory."
     exit 1
 fi
 
@@ -33,7 +33,7 @@ SB_MARKER="$SB_DST/0THIS_IS_A_BACKUP"
 SB_LOCK="$SB_DST/simple-backup.lock"
 SB_LOG="$HOME/simple-backup.log"
 
-if [ -e "$SB_MARKER" ]; then
+if [ ! -e "$SB_MARKER" ]; then
     echo "Error: Destination not marked as backup folder. Run '$0 init' to initialise it."
     exit 1
 fi
@@ -42,19 +42,19 @@ if [ -e "$SB_LOCK" ] && ; then
     if ps -p `cat "$SB_LOCK"` >&/dev/null; then
         echo "Warning: Stale lock file found, running anyway."
     else
-        echo "Error: Previous instance is still running."
+        [ "x$1" != "xtrigger" ] && echo "Error: Previous instance is still running."
         exit 1
     fi
 fi
 
 backup() {
-    echo rsync -av --delete "$SB_SRC/." "$SB_DST"
+    rsync -av --delete "$SB_SRC/." "$SB_DST"
 }
 
 echo $$ >"$SB_LOCK"
 
 case "$1" in
-    backup|)
+    run|)
         backup || {
             echo "Error: Backup had errors."
         }
@@ -68,7 +68,7 @@ case "$1" in
                 if [ -z $DISPLAY ]; then
                     DISPLAY=`find-displays | head -1`
                 fi
-                if gdialog --yesno "Last backup was $AGE days ago. Run backup now?"; then
+                if zenity --question --text="Last backup was $AGE days ago. Run backup now?"; then
                     backup >&"$SB_LOG" && {
                         rm -f "$SB_LOG"
                         zenity --info --text="Backup was successful."
@@ -83,10 +83,12 @@ case "$1" in
         fi
         ;;
     init)
+        mkdir -p "$SB_DST"
         touch "$SB_MARKER"
         ;;
     *)
         echo "Error: Unknown command $1"
+        echo "Usage: $0 <init|run|trigger>"
         ;;
 esac
 
