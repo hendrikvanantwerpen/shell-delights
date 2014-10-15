@@ -38,12 +38,12 @@ if [ ! -e "$SB_MARKER" ]; then
     exit 1
 fi
 
-if [ -e "$SB_LOCK" ] && ; then
+if [ -e "$SB_LOCK" ]; then
     if ps -p `cat "$SB_LOCK"` >&/dev/null; then
-        echo "Warning: Stale lock file found, running anyway."
-    else
         [ "x$1" != "xtrigger" ] && echo "Error: Previous instance is still running."
         exit 1
+    else
+        echo "Warning: Stale lock file found, running anyway."
     fi
 fi
 
@@ -54,7 +54,7 @@ backup() {
 echo $$ >"$SB_LOCK"
 
 case "$1" in
-    run|)
+    run)
         backup || {
             echo "Error: Backup had errors."
         }
