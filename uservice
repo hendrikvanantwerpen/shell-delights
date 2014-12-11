@@ -16,10 +16,10 @@ usage() {
 }
 
 PNAME=$1
+shift
 if [ -z "$PNAME" ]; then
-    echo "Error: No name specified."
-    usage
-    exit 1
+    echo "*** Defaulting to all"
+    PNAME=all
 fi
 if [ "$PNAME" = "help" -o "$PNAME" = "-h" -o "$PNAME" = "--help" ]; then
     usage
@@ -29,17 +29,20 @@ if echo "$PNAME" | grep '~' >&/dev/null; then
     echo "Error: Name cannot contain tilde (~)"
     exit 1
 fi
-shift
 
 CMD=$1
-if [ -z "$CMD" ]; then
-    echo "Error: No command specified."
-    usage
-    exit 1
-fi
 shift
+if [ -z "$CMD" ]; then
+    echo "*** Defaulting to status"
+    CMD=status
+fi
 
 ### Aux functions
+
+nth_line() {
+    N=$1
+    head -$N | tail -1
+}
 
 pid_file() {
     PNAME=$1
@@ -105,7 +108,7 @@ cmd_status() {
 
 cmd_start() {
     if is_running "$PNAME"; then
-        echo "Cannot start second instance of $PNAME."
+        echo "Error: Cannot start second instance of $PNAME."
         false
     else
         STARTFILE=`start_file "$PNAME"`
@@ -138,8 +141,8 @@ cmd_restart() {
         STARTFILE=`start_file "$PNAME"`
         LOGFILE=`log_file "$PNAME"`
         if [ -f "$STARTFILE" ]; then
-            PPATH=`cat "$STARTFILE" | head -1`
-            PCMD=`cat "$STARTFILE" | tail -1`
+            PPATH=`cat "$STARTFILE" | nth_line 1`
+            PCMD=`cat "$STARTFILE" | nth_line 2`
             (cd "$PPATH" ; nohup $PCMD >&"$LOGFILE" & echo $! >"$PIDFILE")
         else
             echo "Error: Cannot restart $PNAME, no restart file found."
@@ -156,11 +159,11 @@ cmd_log() {
     LOGFILE=`ls -1t "$LOGDIR/$PNAME"~*.log | head -1`
     if [ -f "$LOGFILE" ]; then
         is_running "$PNAME" && {
-            echo "*** Showing process output, close with Ctrl-C ***"
+            echo "*** Showing process output, close with Ctrl-C"
             tail "${LINES}f" "$LOGFILE"
         } || {
             tail "$LINES" "$LOGFILE"
-            echo "*** Process terminated ***"
+            echo "*** Process terminated"
         }
     else
         echo "Error: $PNAME has no logs."
@@ -175,7 +178,7 @@ cmd_logs() {
 
 cmd_clean() {
     if is_running "$PNAME"; then
-        echo "Error: "
+        echo "Error: Cannot clean running $PNAME"
         false
     else
         if [ "x$1" = "x-f" ]; then
