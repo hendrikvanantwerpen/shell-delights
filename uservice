@@ -2,57 +2,34 @@
 
 RUNDIR=$HOME/.local/run
 LOGDIR=$HOME/.local/log
-mkdir -p $RUNDIR $LOGDIR
+mkdir -p "$RUNDIR" "$LOGDIR"
 
 usage() {
     echo "Usage:"
-    echo -e "\t$0 list <clean>"
     echo -e "\t$0 NAME start PROGRAM <ARGS>"
-    echo -e "\t$0 NAME status"
-    echo -e "\t$0 NAME log"
-    echo -e "\t$0 NAME stop"
+    echo -e "\t$0 NAME log            - Show most recent program output"
+    echo -e "\t$0 all|NAME status     - Show process status (is it running, can it restart, does it have logs)"
+    echo -e "\t$0 all|NAME stop       - Stop process"
+    echo -e "\t$0 all|NAME restart    - Restart process"
+    echo -e "\t$0 all|NAME clean [-f] - Clean logs or logs and restart info (with -f)"
+    echo -e "\t$0 all|NAME logs       - Show all available log files"
 }
 
-check_running() {
-    NAME=$1
-    PIDFILE=$RUNDIR/$NAME.pid
-    LOGFILE=$LOGDIR/$NAME.log
-    CLEANUP=$2
-    if [ -f "$PIDFILE" ]; then
-        THEPID=`cat "$PIDFILE"`
-        ps -p $THEPID >&/dev/null && { 
-            echo "$NAME ($THEPID) running."
-        } || {
-            echo "$NAME ($THEPID) not running (crashed?)."
-            if [ "x$CLEANUP" = "xclean" ]; then
-                echo "Cleaning up stale process $NAME."
-                /bin/rm -f "$PIDFILE" "$LOGFILE"
-            fi
-            false
-        }
-    else
-        echo "PID file for $NAME not found."
-        false
-    fi
-}
-
-NAME=$1
-if [ -z "$NAME" ]; then
+PNAME=$1
+if [ -z "$PNAME" ]; then
     echo "Error: No name specified."
     usage
     exit 1
 fi
-shift
-
-LOGFILE=$LOGDIR/${NAME}.log
-PIDFILE=$RUNDIR/${NAME}.pid
-
-if [ "x$NAME" = "xlist" ]; then
-    for PNAME in `ls $RUNDIR/*.pid 2>/dev/null | xargs -I{} basename {} .pid`; do
-        check_running "$PNAME" $1
-    done
+if [ "$PNAME" = "help" -o "$PNAME" = "-h" -o "$PNAME" = "--help" ]; then
+    usage
     exit 0
 fi
+if echo "$PNAME" | grep '~' >&/dev/null; then
+    echo "Error: Name cannot contain tilde (~)"
+    exit 1
+fi
+shift
 
 CMD=$1
 if [ -z "$CMD" ]; then
@@ -62,49 +39,175 @@ if [ -z "$CMD" ]; then
 fi
 shift
 
-case "$CMD" in
-    start)
-        if [ -f "$PIDFILE" ] && check_running "$NAME" clean; then
-            echo "Cannot start second instance."
-            exit 1
-        fi
+### Aux functions
+
+pid_file() {
+    PNAME=$1
+    echo "$RUNDIR/${PNAME}.pid"
+}
+start_file() {
+    PNAME=$1
+    echo "$RUNDIR/${PNAME}.cmd"
+}
+log_file() {
+    PNAME=$1
+    echo "$LOGDIR/${PNAME}~$(date +%Y-%m-%dT%H.%M.%S).log"
+}
+
+ext_names() {
+    THEDIR=$1
+    THEEXT=$2
+    ls -1d $THEDIR/*$THEEXT 2>/dev/null | xargs -I{} basename {} $THEEXT
+}
+
+all_names() {
+    (ext_names "$RUNDIR" .pid ; \
+     ext_names "$RUNDIR" .cmd ; \
+     ext_names "$LOGDIR" .log | cut -d~ -f1) | sort | uniq
+}
+
+is_running() {
+    PNAME=$1
+    PIDFILE=`pid_file "$PNAME"`
+    if [ -f "$PIDFILE" ]; then
+        THEPID=`cat "$PIDFILE"`
+        ps -p "$THEPID" >&/dev/null && {
+            true
+        } || {
+            /bin/rm -f "$PIDFILE"
+            false
+        }
+    else
+        false
+    fi
+}
+
+can_restart() {
+    PNAME=$1
+    STARTFILE=`start_file "$PNAME"`
+    test -f "$STARTFILE"
+}
+
+has_logs() {
+    PNAME=$1
+    ls "$LOGDIR/$PNAME"*.log >&/dev/null
+}
+
+### The commands
+
+cmd_status() {
+    echo -n "$PNAME"
+    is_running "$PNAME" && echo -n " running" || echo -n " not running"
+    can_restart "$PNAME" && echo -n ", can restart"
+    has_logs "$PNAME" && echo -n ", has logs"
+    echo "."
+}
+
+cmd_start() {
+    if is_running "$PNAME"; then
+        echo "Cannot start second instance of $PNAME."
+        false
+    else
+        STARTFILE=`start_file "$PNAME"`
+        LOGFILE=`log_file "$PNAME"`
+        pwd > "$STARTFILE"
+        echo "$*" >> "$STARTFILE"
         nohup $* >&"$LOGFILE" &
         echo $! >"$PIDFILE"
-        ;;
-    stat*)
-        check_running "$NAME" $1
-        ;;
-    log)
-        LINES="-10"
-        if [ ! -z "$1" ]; then
-            LINES="$1"
+    fi
+}
+
+cmd_stop() {
+    if is_running "$PNAME"; then
+        PIDFILE=`pid_file "$PNAME"`
+        THEPID=`cat "$PIDFILE"`
+        kill $THEPID >&/dev/null && {
+            while is_running "$PNAME"; do sleep 1; done
+        } || {
+            echo "Error: Could not stop $PNAME ($THEPID)."
+            false
+        }
+    fi
+}
+
+cmd_restart() {
+    if is_running "$PNAME"; then
+        echo "Error: Cannot restart $PNAME, it is still running."
+        false
+    else
+        STARTFILE=`start_file "$PNAME"`
+        LOGFILE=`log_file "$PNAME"`
+        if [ -f "$STARTFILE" ]; then
+            PPATH=`cat "$STARTFILE" | head -1`
+            PCMD=`cat "$STARTFILE" | tail -1`
+            (cd "$PPATH" ; nohup $PCMD >&"$LOGFILE" & echo $! >"$PIDFILE")
+        else
+            echo "Error: Cannot restart $PNAME, no restart file found."
+            false
         fi
-        check_running "$NAME" && {
+    fi
+}
+
+cmd_log() {
+    LINES="-10"
+    if [ ! -z "$1" ]; then
+        LINES="$1"
+    fi
+    LOGFILE=`ls -1t "$LOGDIR/$PNAME"~*.log | head -1`
+    if [ -f "$LOGFILE" ]; then
+        is_running "$PNAME" && {
             echo "*** Showing process output, close with Ctrl-C ***"
-            tail ${LINES}f "$LOGFILE"
-        } || { [ -e "$PIDFILE" ] && {
-            tail ${LINES} "$LOGFILE"
+            tail "${LINES}f" "$LOGFILE"
+        } || {
+            tail "$LINES" "$LOGFILE"
             echo "*** Process terminated ***"
-        } }
-        ;;
-    stop)
-        if check_running "$NAME" clean; then
-            THEPID=`cat "$PIDFILE"`
-            kill $THEPID >&/dev/null && {
-                echo "Stopping ${NAME} ($THEPID)..."
-                while ps -p "$THEPID" >&/dev/null; do sleep 1; done && {
-                    /bin/rm -f "$PIDFILE"
-                }
-                true
-            } || {
-                echo "$NAME ($THEPID) could not be stopped."
-                false
-            }
+        }
+    else
+        echo "Error: $PNAME has no logs."
+    fi
+}
+
+cmd_logs() {
+    ls -1td "$LOGDIR/$PNAME"~*.log 2>/dev/null || {
+        echo "Error: No logs for $PNAME"
+    }
+}
+
+cmd_clean() {
+    if is_running "$PNAME"; then
+        echo "Error: "
+        false
+    else
+        if [ "x$1" = "x-f" ]; then
+            /bin/rm -f "$RUNDIR/$PNAME".*
         fi
-        ;;
-    *)
-        echo "Error: Unknown command $CMD"
+        /bin/rm -f "$LOGDIR/$PNAME~"*.log
+    fi
+}
+
+### Execute the command
+
+CMDTYPE=`type -t "cmd_$CMD"`
+if [ "x$CMDTYPE" != "xfunction" ]; then
+    echo "Error: Unknown command $CMD."
+    usage
+    exit 1
+fi
+
+if [ "x$PNAME" = "xall" ]; then
+    if [ "x$CMD" = "xstart" ]; then
+        echo "Error: Cannot start 'all'"
         usage
         exit 1
-        ;;
-esac
+    fi
+    if [ "x$CMD" = "xlog" ]; then
+        echo "Error: Cannot show log for 'all'"
+        usage
+        exit 1
+    fi
+    for PNAME in `all_names`; do
+        "cmd_$CMD" $*
+    done
+else
+    "cmd_$CMD" $*
+fi
