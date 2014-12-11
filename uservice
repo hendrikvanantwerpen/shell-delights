@@ -100,7 +100,11 @@ has_logs() {
 
 cmd_status() {
     echo -n "$PNAME"
-    is_running "$PNAME" && echo -n " running" || echo -n " not running"
+    is_running "$PNAME" && {
+        PIDFILE=`pid_file "$PNAME"`
+        THEPID=`cat "$PIDFILE"`
+        echo -n " running ($THEPID)"
+    } || echo -n " not running"
     can_restart "$PNAME" && echo -n ", can restart"
     has_logs "$PNAME" && echo -n ", has logs"
     echo "."
