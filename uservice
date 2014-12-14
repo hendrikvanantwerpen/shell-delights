@@ -6,27 +6,27 @@ mkdir -p "$RUNDIR" "$LOGDIR"
 
 usage() {
     echo "Usage:"
-    echo -e "\t$0 NAME start PROGRAM <ARGS>"
+    echo -e "\t$0 NAMES start PROGRAM <ARGS>"
     echo -e "\t$0 NAME log            - Show most recent program output"
-    echo -e "\t$0 all|NAME status     - Show process status (is it running, can it restart, does it have logs)"
-    echo -e "\t$0 all|NAME stop       - Stop process"
-    echo -e "\t$0 all|NAME restart    - Restart process"
-    echo -e "\t$0 all|NAME clean [-f] - Clean logs or logs and restart info (with -f)"
-    echo -e "\t$0 all|NAME logs       - Show all available log files"
+    echo -e "\t$0 all|NAMES status     - Show process status (is it running, can it restart, does it have logs)"
+    echo -e "\t$0 all|NAMES stop       - Stop process"
+    echo -e "\t$0 all|NAMES restart    - Restart process"
+    echo -e "\t$0 all|NAMES clean [-f] - Clean logs or logs and restart info (with -f)"
+    echo -e "\t$0 all|NAMES logs       - Show all available log files"
 }
 
-PNAME=$1
+PNAMES=$1
 shift
-if [ -z "$PNAME" ]; then
+if [ -z "$PNAMES" ]; then
     echo "*** Defaulting to all"
-    PNAME=all
+    PNAMES=all
 fi
-if [ "$PNAME" = "help" -o "$PNAME" = "-h" -o "$PNAME" = "--help" ]; then
+if [ "$PNAMES" = "help" -o "$PNAMES" = "--help" ]; then
     usage
     exit 0
 fi
-if echo "$PNAME" | grep '~' >&/dev/null; then
-    echo "Error: Name cannot contain tilde (~)"
+if echo "$PNAMES" | grep '~' >&/dev/null; then
+    echo "Error: Names cannot contain tilde (~)"
     exit 1
 fi
 
@@ -45,16 +45,13 @@ nth_line() {
 }
 
 pid_file() {
-    PNAME=$1
-    echo "$RUNDIR/${PNAME}.pid"
+    echo "$RUNDIR/$1.pid"
 }
 start_file() {
-    PNAME=$1
-    echo "$RUNDIR/${PNAME}.cmd"
+    echo "$RUNDIR/$1.cmd"
 }
 log_file() {
-    PNAME=$1
-    echo "$LOGDIR/${PNAME}~$(date +%Y-%m-%dT%H.%M.%S).log"
+    echo "$LOGDIR/$1~$(date +%Y-%m-%dT%H.%M.%S).log"
 }
 
 ext_names() {
@@ -70,8 +67,7 @@ all_names() {
 }
 
 is_running() {
-    PNAME=$1
-    PIDFILE=`pid_file "$PNAME"`
+    PIDFILE=`pid_file "$1"`
     if [ -f "$PIDFILE" ]; then
         THEPID=`cat "$PIDFILE"`
         ps -p "$THEPID" >&/dev/null && {
@@ -86,37 +82,35 @@ is_running() {
 }
 
 can_restart() {
-    PNAME=$1
-    STARTFILE=`start_file "$PNAME"`
+    STARTFILE=`start_file "$1"`
     test -f "$STARTFILE"
 }
 
 has_logs() {
-    PNAME=$1
-    ls "$LOGDIR/$PNAME"*.log >&/dev/null
+    ls "$LOGDIR/$1"*.log >&/dev/null
 }
 
 ### The commands
 
 cmd_status() {
-    echo -n "$PNAME"
-    is_running "$PNAME" && {
-        PIDFILE=`pid_file "$PNAME"`
+    echo -n "$1"
+    is_running "$1" && {
+        PIDFILE=`pid_file "$1"`
         THEPID=`cat "$PIDFILE"`
         echo -n " running ($THEPID)"
     } || echo -n " not running"
-    can_restart "$PNAME" && echo -n ", can restart"
-    has_logs "$PNAME" && echo -n ", has log(s)"
+    can_restart "$1" && echo -n ", can restart"
+    has_logs "$1" && echo -n ", has log(s)"
     echo "."
 }
 
 cmd_start() {
-    if is_running "$PNAME"; then
-        echo "Error: Cannot start second instance of $PNAME."
+    if is_running "$1"; then
+        echo "Error: Cannot start second instance of $1"
         false
     else
-        STARTFILE=`start_file "$PNAME"`
-        LOGFILE=`log_file "$PNAME"`
+        STARTFILE=`start_file "$1"`
+        LOGFILE=`log_file "$1"`
         pwd > "$STARTFILE"
         echo "$*" >> "$STARTFILE"
         nohup $* >&"$LOGFILE" &
@@ -125,31 +119,31 @@ cmd_start() {
 }
 
 cmd_stop() {
-    if is_running "$PNAME"; then
-        PIDFILE=`pid_file "$PNAME"`
+    if is_running "$1"; then
+        PIDFILE=`pid_file "$1"`
         THEPID=`cat "$PIDFILE"`
         kill $THEPID >&/dev/null && {
-            while is_running "$PNAME"; do sleep 1; done
+            while is_running "$1"; do sleep 1; done
         } || {
-            echo "Error: Could not stop $PNAME ($THEPID)."
+            echo "Error: Could not stop $1 ($THEPID)."
             false
         }
     fi
 }
 
 cmd_restart() {
-    if is_running "$PNAME"; then
-        echo "Error: Cannot restart $PNAME, it is still running."
+    if is_running "$1"; then
+        echo "Error: Cannot restart $1, it is still running."
         false
     else
-        STARTFILE=`start_file "$PNAME"`
-        LOGFILE=`log_file "$PNAME"`
+        STARTFILE=`start_file "$1"`
+        LOGFILE=`log_file "$1"`
         if [ -f "$STARTFILE" ]; then
             PPATH=`cat "$STARTFILE" | nth_line 1`
             PCMD=`cat "$STARTFILE" | nth_line 2`
             (cd "$PPATH" ; nohup $PCMD >&"$LOGFILE" & echo $! >"$PIDFILE")
         else
-            echo "Error: Cannot restart $PNAME, no restart file found."
+            echo "Error: Cannot restart $1, no restart file found."
             false
         fi
     fi
@@ -160,9 +154,9 @@ cmd_log() {
     if [ ! -z "$1" ]; then
         LINES="$1"
     fi
-    LOGFILE=`ls -1t "$LOGDIR/$PNAME"~*.log | head -1`
+    LOGFILE=`ls -1t "$LOGDIR/$1"~*.log | head -1`
     if [ -f "$LOGFILE" ]; then
-        is_running "$PNAME" && {
+        is_running "$1" && {
             echo "*** Showing process output, close with Ctrl-C"
             tail "${LINES}f" "$LOGFILE"
         } || {
@@ -170,51 +164,68 @@ cmd_log() {
             echo "*** Process terminated"
         }
     else
-        echo "Error: $PNAME has no logs."
+        echo "Error: $1 has no logs."
     fi
 }
 
 cmd_logs() {
-    ls -1td "$LOGDIR/$PNAME"~*.log 2>/dev/null || {
-        echo "Error: No logs for $PNAME"
+    ls -1td "$LOGDIR/$1"~*.log 2>/dev/null || {
+        echo "Error: No logs for $1"
     }
 }
 
 cmd_clean() {
-    if is_running "$PNAME"; then
-        echo "Error: Cannot clean running $PNAME"
+    if is_running "$1"; then
+        echo "Error: Cannot clean running $1"
         false
     else
-        if [ "x$1" = "x-f" ]; then
-            /bin/rm -f "$RUNDIR/$PNAME".*
+        if [ "x$2" = "x-f" ]; then
+            /bin/rm -f "$RUNDIR/$1".*
         fi
-        /bin/rm -f "$LOGDIR/$PNAME~"*.log
+        /bin/rm -f "$LOGDIR/$1~"*.log
     fi
 }
 
+is_cmd() {
+    [ x`type -t "cmd_$1"` = "xfunction" ]
+} 
+
 ### Execute the command
 
-CMDTYPE=`type -t "cmd_$CMD"`
-if [ "x$CMDTYPE" != "xfunction" ]; then
+# Expand all
+if [ "x$PNAMES" = "xall" ]; then
+    PNAMES=`all_names`
+fi
+
+# Check for illegal names
+for PNAME in $PNAMES; do
+    if [ "x$PNAME" = "xall" ]; then
+        echo "Error: Name 'all' should not be used in a list of names."
+        usage
+        exit 1
+    fi
+    if is_cmd "$PNAME"; then
+        echo "Error: Using command '$PNAME' as a name, did you forget to specify name(s)?"
+        usage
+        exit 1
+    fi
+done
+
+# Check for valid command
+if ! is_cmd "$CMD"; then
     echo "Error: Unknown command $CMD."
     usage
     exit 1
 fi
 
-if [ "x$PNAME" = "xall" ]; then
-    if [ "x$CMD" = "xstart" ]; then
-        echo "Error: Cannot start 'all'"
-        usage
-        exit 1
-    fi
-    if [ "x$CMD" = "xlog" ]; then
-        echo "Error: Cannot show log for 'all'"
-        usage
-        exit 1
-    fi
-    for PNAME in `all_names`; do
-        "cmd_$CMD" $*
-    done
-else
-    "cmd_$CMD" $*
+# Check singleton commands
+if [ `echo $PNAMES | wc -w` -gt 1 -a "x$CMD" = "xlog" ]; then
+    echo "Error: Cannot show log for multiple process"
+    usage
+    exit 1
 fi
+
+# Execute actual command
+for PNAME in $PNAMES; do
+    "cmd_$CMD" "$PNAME" $*
+done
