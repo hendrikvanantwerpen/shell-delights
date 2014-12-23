@@ -7,16 +7,16 @@ mkdir -p "$RUNDIR" "$LOGDIR"
 usage() {
     echo "Usage:"
     echo -e "\t$0 NAMES start PROGRAM <ARGS>"
-    echo -e "\t$0 NAME log            - Show most recent program output"
-    echo -e "\t$0 all|NAMES status     - Show process status (is it running, can it restart, does it have logs)"
-    echo -e "\t$0 all|NAMES stop       - Stop process"
-    echo -e "\t$0 all|NAMES restart    - Restart process"
-    echo -e "\t$0 all|NAMES clean [-f] - Clean logs or logs and restart info (with -f)"
-    echo -e "\t$0 all|NAMES logs       - Show all available log files"
+    echo -e "\t$0 NAME log               - Show most recent program output"
+    echo -e "\t$0 all|NAMES status       - Show process status (is it running, can it restart, does it have logs)"
+    echo -e "\t$0 all|NAMES stop         - Stop process"
+    echo -e "\t$0 all|NAMES restart [-c] - Restart process (in CWD with -c)"
+    echo -e "\t$0 all|NAMES clean [-f]   - Clean logs (and restart info with -f)"
+    echo -e "\t$0 all|NAMES logs         - Show all available log files"
 }
 
 PNAMES=$1
-shift
+shift 1
 if [ -z "$PNAMES" ]; then
     echo "*** Defaulting to all"
     PNAMES=all
@@ -31,7 +31,7 @@ if echo "$PNAMES" | grep '~' >&/dev/null; then
 fi
 
 CMD=$1
-shift
+shift 1
 if [ -z "$CMD" ]; then
     echo "*** Defaulting to status"
     CMD=status
@@ -105,15 +105,20 @@ cmd_status() {
 }
 
 cmd_start() {
-    if is_running "$1"; then
-        echo "Error: Cannot start second instance of $1"
+    P=$1
+    shift 1
+    if is_running "$P"; then
+        echo "Error: Cannot start second instance of $P"
+        false
+    elif [ -z "$*" ]; then
+        echo "Error: No start command provided for $P"
         false
     else
-        STARTFILE=`start_file "$1"`
-        LOGFILE=`log_file "$1"`
+        STARTFILE=`start_file "$P"`
+        LOGFILE=`log_file "$P"`
         pwd > "$STARTFILE"
-        echo "$*" >> "$STARTFILE"
-        nohup $* >&"$LOGFILE" &
+        echo "$@" >> "$STARTFILE"
+        nohup "$@" >&"$LOGFILE" &
         echo $! >"$PIDFILE"
     fi
 }
@@ -141,6 +146,9 @@ cmd_restart() {
         if [ -f "$STARTFILE" ]; then
             PPATH=`cat "$STARTFILE" | nth_line 1`
             PCMD=`cat "$STARTFILE" | nth_line 2`
+            if [ "x$2" -eq "x-c" ]; then
+                PPATH=`pwd`
+            fi
             (cd "$PPATH" ; nohup $PCMD >&"$LOGFILE" & echo $! >"$PIDFILE")
         else
             echo "Error: Cannot restart $1, no restart file found."
@@ -151,8 +159,8 @@ cmd_restart() {
 
 cmd_log() {
     LINES="-10"
-    if [ ! -z "$1" ]; then
-        LINES="$1"
+    if [ ! -z "$2" ]; then
+        LINES="$2"
     fi
     LOGFILE=`ls -1t "$LOGDIR/$1"~*.log | head -1`
     if [ -f "$LOGFILE" ]; then
@@ -227,5 +235,5 @@ fi
 
 # Execute actual command
 for PNAME in $PNAMES; do
-    "cmd_$CMD" "$PNAME" $*
+    "cmd_$CMD" "$PNAME" "$@"
 done
