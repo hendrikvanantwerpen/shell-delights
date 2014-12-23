@@ -149,7 +149,9 @@ cmd_restart() {
             if [ "x$2" = "x-c" ]; then
                 PPATH=`pwd`
             fi
-            (cd "$PPATH" ; nohup $PCMD >&"$LOGFILE" & echo $! >"$PIDFILE")
+            echo "$PPATH" > "$STARTFILE"
+            echo "$PCMD" >> "$STARTFILE"
+            (cd "$PPATH" && nohup $PCMD >&"$LOGFILE" & echo $! >"$PIDFILE")
         else
             echo "Error: Cannot restart $1, no restart file found."
             false
