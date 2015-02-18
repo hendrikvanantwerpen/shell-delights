@@ -1,0 +1,14 @@
+#!/bin/bash
+
+MARGIN=25
+
+IPDF=$1
+if [ ! -f "$IPDF" ]; then
+    echo ""
+    exit 1
+fi
+PDFNAME=`basename -s .pdf $IPDF`
+OPDF=$PDFNAME.2up.pdf
+CPDF=$PDFNAME.cropped.pdf
+pdfcrop --margins "$MARGIN" "$IPDF" "$CPDF" && pdfnup --nup 2x1 -o "$OPDF" "$CPDF"
+rm -f "$CPDF"
